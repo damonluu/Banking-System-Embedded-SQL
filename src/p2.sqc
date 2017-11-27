@@ -1,0 +1,1008 @@
+#include <sqlenv.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+const char DB_NAME_KEY[16] = "db2.name";
+const char DB_USER_KEY[16] = "db2.username";
+const char DB_PASS_KEY[16] = "db2.password";
+const char BATCH_KEY[16] = "p2.batch.input";
+
+struct sqlca sqlca;
+
+EXEC SQL BEGIN DECLARE SECTION;
+char db_name[20];
+char db_user[20];
+char db_pass[20];
+
+int cus_id;
+char cus_name[15];
+char cus_gender;
+int cus_age;
+// int cus_pin; // DOESNT WORK FOR PINS WITH LEADING ZEROES
+char cus_pin[10];
+int acc_num;
+int acc_id;
+int acc_bal;
+char acc_type;
+char acc_status;
+
+int src_cid;
+int dest_cid;
+int trans_amt;
+int a_total;
+int b_min;
+int b_max;
+int b_avg;
+
+// my own STUFF
+int logged_in_cus_id;
+int initial_deposit;
+int check_exist_cus_id;
+int check_exist_cus_pin;
+int check_exist_acc_num;
+int acc_num_to_close;
+int deposit_amount;
+int withdraw_amount;
+int transfer_src;
+int transfer_destination;
+int acc_sum_total;
+
+EXEC SQL END DECLARE SECTION;
+
+int batchBypass = 1;
+
+/*
+  declare functions before hand
+*/
+
+static void promptMainMenu();
+static void promptNewCustomer();
+static void promptLogin();
+static void customerMainMenu();
+static void newCustomer();
+static void openAccount();
+static void closeAccount();
+static void deposit();
+static void withdraw();
+static void transfer();
+static void accountSummary();
+static void reportA();
+static void reportB();
+static void administratorMainMenu();
+static int checkCustomerExist();
+static int checkCustomerExistWithPin();
+static int checkAccountExist();
+static void close_db();
+static void open_db();
+
+static void promptMainMenu() {
+  batchBypass = 0;
+  int menu_input;
+  printf("\nWelcome to the Self Banking System!"
+         "\n1. New Customer"
+         "\n2. Customer Login"
+         "\n3. Exit"
+         "\nPlease enter your choice: ");
+  fscanf(stdin, "%d", &menu_input);
+  // printf("you entered: %s", menu_input);
+  while (getchar() != '\n');
+  printf("\n");
+  if (menu_input == 1) {
+    printf("\n");
+    promptNewCustomer();
+  } else if (menu_input == 2) {
+    printf("\n");
+    promptLogin();
+  } else if (menu_input == 3) {
+    printf("Good bye\n\n");
+  } else {
+    printf("\nInput Not Recognized. Going Back To Main Menu\n\n");
+    promptMainMenu();
+  }
+}
+
+static void promptNewCustomer() {
+  char userEnteredName[15];
+  char userEnteredGender;
+  char userEnteredAge[3];
+  char userEnteredPin[10];
+
+  printf("\nPlease enter your name: ");
+  fscanf(stdin, "%s", userEnteredName);
+  while (getchar() != '\n');
+  if (strcmp(userEnteredName, "") == 0) {
+    printf("Name cannot be blank, going back to main menu");
+    promptMainMenu();
+    return;
+  }
+
+  printf("\nPlease enter your gender ('F' for Female or 'M' for Male): ");
+  fscanf(stdin, "%c", &userEnteredGender);
+  while (getchar() != '\n');
+  if ((userEnteredGender != 'M') && (userEnteredGender != 'F')) {
+    printf("Gender can only be 'F' for female or 'M' for male, going back to "
+           "main menu");
+    promptMainMenu();
+    return;
+  }
+
+  printf("\nPlease enter your age: ");
+  fscanf(stdin, "%s", userEnteredAge);
+  while (getchar() != '\n');
+  if (atoi(userEnteredAge) < 0) {
+    printf("Age can only be a positive integer, going back to main menu");
+    promptMainMenu();
+    return;
+  }
+
+  printf("\nPlease enter your pin (numbers only): ");
+  fscanf(stdin, "%s", userEnteredPin);
+  while (getchar() != '\n');
+  if (atoi(userEnteredPin) < 0) {
+    printf("Pin can only be a positive integer, going back to main menu");
+    promptMainMenu();
+    return;
+  }
+
+  // printf("userEnteredName: %s, userEnteredGender: %c, userEnteredAge: %s, "
+  //        "userEnteredPin: %s\n",
+  //        userEnteredName, userEnteredGender, userEnteredAge, userEnteredPin);
+  newCustomer(&userEnteredName, &userEnteredGender, &userEnteredAge,
+              &userEnteredPin);
+  promptMainMenu();
+}
+
+static void promptLogin() {
+  char userEnteredId[15];
+  char userEnteredPin[15];
+  // int userEnteredId = -1;
+  // int userEnteredPin = -1;
+
+  printf("Please enter your Customer ID: ");
+  fscanf(stdin, "%s", userEnteredId);
+  while (getchar() != '\n');
+  printf("Please enter your Pin number: ");
+  fscanf(stdin, "%s", userEnteredPin);
+  while (getchar() != '\n');
+
+  if ((atoi(userEnteredId) == 0) && (atoi(userEnteredPin) == 0)) {
+    // admin login
+    administratorMainMenu();
+  } else if ((atoi(userEnteredId) >= 0) && (atoi(userEnteredPin) >= 0)) {
+    // regular customer login
+    if (checkCustomerExistWithPin(&userEnteredId, &userEnteredPin) == 1) {
+      logged_in_cus_id = atoi(userEnteredId);
+      printf("\naccount exist!! logging in\n");
+      customerMainMenu();
+    } else {
+      printf("\nCustomer ID or Pin Is Incorrect!!, going back to Main Menu\n");
+      printf("\nuserEnteredId%s\n", userEnteredId);
+      promptMainMenu();
+      return;
+    }
+  } else {
+    printf("\n\nUser ID and Pin can only be positive integers, Going back to "
+           "main menu");
+    promptMainMenu();
+    return;
+  }
+}
+
+static void customerMainMenu() {
+  int customer_menu_input;
+  printf("\nCustomer Main Menu"
+         "\n1. Open Account"
+         "\n2. Close Account"
+         "\n3. Deposit"
+         "\n4. Withdraw"
+         "\n5. Transfer"
+         "\n6. Account Summary"
+         "\n7. Exit"
+         "\nPlease enter your choice: "
+       );
+  fscanf(stdin, "%d", &customer_menu_input);
+  while (getchar() != '\n');
+  printf("\n");
+  if (customer_menu_input == 1) {
+    char customerEnteredId[10];
+    char customerEnteredAccountType;
+    char customerInitialDeposit[20];
+
+    printf("Please enter a Customer ID: ");
+    fscanf(stdin, "%s", customerEnteredId);
+    while (getchar() != '\n');
+    if (atoi(customerEnteredId) < 0) {
+      printf("Customer ID can only be a positive integer, going back to " "Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    printf("Please enter a account type ('C' for Checking or 'S' for Savings): ");
+    fscanf(stdin, "%c", &customerEnteredAccountType);
+    while (getchar() != '\n');
+    const char *matches = "CS";
+    if (strchr(matches, customerEnteredAccountType) != NULL) {
+      printf("valid account type");
+    } else {
+      printf("Account type can only be capital 'C' for checkings or 'S' for "
+             "savings, going back to Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    printf("Please enter a balance (Initial Deposit): ");
+    fscanf(stdin, "%s", customerInitialDeposit);
+    while (getchar() != '\n');
+    if (atoi(customerInitialDeposit) < 0) {
+      printf("Initial Balance can only be a positive integer, Going back to "
+             "Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    if (checkCustomerExist(&customerEnteredId) == 1) {
+      openAccount(&customerEnteredId, &customerEnteredAccountType, &customerInitialDeposit);
+    } else {
+      printf("\nCustomer ID Does doesn't exist!!, going back to Customer Main Menu\n");
+    }
+
+  } else if (customer_menu_input == 2) {
+
+    char customerEnteredAccountNumberToClose[10];
+
+    printf("Please enter a Customer ID: ");
+    fscanf(stdin, "%s", customerEnteredAccountNumberToClose);
+    while (getchar() != '\n');
+    if (atoi(customerEnteredAccountNumberToClose) < 0) {
+      printf("Account Number to close can only be a positive integer, going "
+             "back to Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    if (checkAccountExist(&customerEnteredAccountNumberToClose) == 1) {
+      closeAccount(&customerEnteredAccountNumberToClose);
+      printf("\naccount to close exist!!\n");
+    } else {
+      printf("\nAccount Number doesn't exist!!, going back to Customer Main Menu\n");
+    }
+
+  } else if (customer_menu_input == 3) {
+
+    char customerEnteredAccountNumberToDeposit[10];
+    char customerEnteredAmountToDeposit[15];
+
+    printf("Please Enter The Account Number To Deposit To: ");
+    fscanf(stdin, "%s", customerEnteredAccountNumberToDeposit);
+    while (getchar() != '\n');
+    if (atoi(customerEnteredAccountNumberToDeposit) < 0) {
+      printf("Account Number to deposit to can only be a positive integer, "
+             "going back to Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    printf("Please enter a amount to deposit: ");
+    fscanf(stdin, "%s", customerEnteredAmountToDeposit);
+    while (getchar() != '\n');
+    if (atoi(customerEnteredAmountToDeposit) < 0) {
+      printf("Deposit amount can only be a positive integer, Going back to "
+             "Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    if (checkAccountExist(&customerEnteredAccountNumberToDeposit) == 1) {
+      deposit(&customerEnteredAccountNumberToDeposit,
+              &customerEnteredAmountToDeposit);
+    } else {
+      printf("\nAccount Number doesn't exist!!, going back to Customer Main Menu\n");
+    }
+
+  } else if (customer_menu_input == 4) {
+
+    char customerEnteredAccountNumberToWithdraw[10];
+    char customerEnteredAmountToWithdraw[15];
+
+    printf("Please enter a Customer ID: ");
+    fscanf(stdin, "%s", customerEnteredAccountNumberToWithdraw);
+    while (getchar() != '\n');
+    if (atoi(customerEnteredAccountNumberToWithdraw) < 0) {
+      printf("Account Number to deposit to can only be a positive integer, "
+             "going back to Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    printf("Please enter an amount to Withdraw: ");
+    fscanf(stdin, "%s", customerEnteredAmountToWithdraw);
+    while (getchar() != '\n');
+    if (atoi(customerEnteredAmountToWithdraw) < 0) {
+      printf("Withdraw amount can only be a positive integer, Going back to Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    if (checkAccountExist(&customerEnteredAccountNumberToWithdraw) == 1) {
+      withdraw(&customerEnteredAccountNumberToWithdraw, &customerEnteredAmountToWithdraw);
+
+    } else {
+      printf("\nAccount Number doesn't exist!!, going back to Customer Main "
+             "Menu\n");
+    }
+
+  } else if (customer_menu_input == 5) {
+
+    char transferSourceAccountNumber[10];
+    char transferDestinationAccountNumber[10];
+    char transferBalanceAmount[15];
+
+    printf("Please enter a your Source's Account Number: ");
+    fscanf(stdin, "%s", transferSourceAccountNumber);
+    while (getchar() != '\n');
+    if (atoi(transferSourceAccountNumber) < 0) {
+      printf("Source Account Number can only be a positive integer, going back "
+             "to Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    printf("Please enter a your Destination's Account Number: ");
+    fscanf(stdin, "%s", transferDestinationAccountNumber);
+    while (getchar() != '\n');
+    if (atoi(transferDestinationAccountNumber) < 0) {
+      printf("Destination Account Number can only be a positive integer, going "
+             "back to Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    printf("Please enter the amount to transfer: ");
+    fscanf(stdin, "%s", transferBalanceAmount);
+    while (getchar() != '\n');
+    if (atoi(transferBalanceAmount) < 0) {
+      printf("Transfer Amount can only be a positive integer, going back to "
+             "Customer Main Menu");
+      customerMainMenu();
+      return;
+    }
+
+    if ((checkAccountExist(&transferSourceAccountNumber) == 1) &&
+        checkAccountExist(&transferDestinationAccountNumber) == 1) {
+      transfer(&transferSourceAccountNumber, &transferDestinationAccountNumber, &transferBalanceAmount);
+    } else {
+      printf("\nAt Least One Account Number doesn't exist!!, going back to "
+             "Customer Main Menu\n");
+    }
+
+  } else if (customer_menu_input == 6) {
+    char acc_sum_cus_id[10];
+    sprintf(acc_sum_cus_id, "%d", logged_in_cus_id);
+    accountSummary(&acc_sum_cus_id);
+  } else if (customer_menu_input == 7) {
+    promptMainMenu();
+    return;
+
+  } else {
+    printf("\nInput Not Recognized. Going Back To Customer Main Menu\n\n");
+  }
+  customerMainMenu();
+}
+
+static int checkCustomerExist(char *customerId) {
+  check_exist_cus_id = atoi(customerId);
+
+  EXEC SQL SELECT id INTO :check_exist_cus_id
+    FROM p2.Customer WHERE id = :check_exist_cus_id;
+  if (sqlca.sqlcode == 0) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+static int checkCustomerExistWithPin(char *customerId, char *customerPin) {
+  check_exist_cus_id = atoi(customerId);
+  check_exist_cus_pin = atoi(customerPin);
+
+  EXEC SQL SELECT id INTO :check_exist_cus_id
+    FROM p2.Customer
+    WHERE id = :check_exist_cus_id AND pin = :check_exist_cus_pin;
+  if (sqlca.sqlcode == 0) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+static int checkAccountExist(char *accountNum) {
+  check_exist_acc_num = atoi(accountNum);
+  EXEC SQL SELECT id INTO :check_exist_acc_num
+    FROM p2.Account
+    WHERE number = :check_exist_acc_num;
+  if (sqlca.sqlcode == 0) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+static void administratorMainMenu() {
+  int admin_menu_input;
+  printf("\nAdministrator Main Menu!"
+         "\n1. Account Summary for a Customer"
+         "\n2. Report A :: Customer Information with Total Balance in Decreasing Order"
+         "\n3. Report B :: Find the Average Total Balance Between Age Groups"
+         "\n4. Exit"
+         "\nPlease Enter Your Choice: "
+       );
+
+  fscanf(stdin, "%d", &admin_menu_input);
+  while (getchar() != '\n');
+  printf("\n");
+
+  if (admin_menu_input == 1) {
+    printf("\n");
+    char admin_summary_cus_id[10];
+    printf("\nPlease enter your the Customer ID to get the account summary for: ");
+    fscanf(stdin, "%s", admin_summary_cus_id);
+    while (getchar() != '\n');
+    accountSummary(&admin_summary_cus_id);
+
+  } else if (admin_menu_input == 2) {
+    printf("\n");
+    reportA();
+  } else if (admin_menu_input == 3) {
+    printf("\n");
+    char admin_cus_min_age[10];
+    char admin_cus_max_age[10];
+
+    printf("\nPlease enter the minimum age: ");
+    fscanf(stdin, "%s", admin_cus_min_age);
+    while (getchar() != '\n');
+    if(atoi(admin_cus_min_age) < 0) {
+      printf("\nMinimum Age Can Only Be a Positive Integer, Going back to Customer Main Menu\n");
+      customerMainMenu();
+      return;
+    }
+
+    printf("\nPlease enter the maximum age: ");
+    fscanf(stdin, "%s", admin_cus_max_age);
+    while (getchar() != '\n');
+    if(atoi(admin_cus_max_age) < 0) {
+      printf("\nMaximum Age Can Only Be a Positive Integer, Going back to Customer Main Menu\n");
+      customerMainMenu();
+      return;
+    }
+    printf("\n");
+    reportB(&admin_cus_min_age, &admin_cus_max_age);
+
+  } else if (admin_menu_input == 4) {
+    promptMainMenu();
+    return;
+  } else {
+    printf("\nInput Not Recognized. Going Back To Administrator Main Menu\n\n");
+    administratorMainMenu();
+    return;
+  }
+  administratorMainMenu();
+}
+
+/**
+ * Create a new customer.
+ * @param name customer name
+ * @param gender customer gender
+ * @param age customer age
+ * @param pin customer pin
+ */
+static void newCustomer(char *name, char *gender, char *age, char *pin) {
+  printf(":: CREATE NEW CUSTOMER - RUNNING\n");
+
+  strcpy(cus_name, name);
+  cus_gender = *gender;
+  cus_age = atoi(age);
+  strcpy(cus_pin, pin);
+
+  EXEC SQL INSERT INTO p2.Customer(name, gender, age, pin) VALUES(
+      :cus_name,
+      :cus_gender,
+      :cus_age,
+      :cus_pin
+    );
+  if (sqlca.sqlcode == 0) {
+    EXEC SQL SELECT IDENTITY_VAL_LOCAL() INTO :cus_id
+      FROM SYSIBM.SYSDUMMY1;
+    printf("New Customer Creation Successful, Your Customer ID Is: %d\n",
+           cus_id);
+    printf(":: CREATE NEW CUSTOMER - SUCCESS\n");
+    close_db();
+    open_db();
+  }
+}
+
+/**
+ * Open a new account.
+ * @param id customer id
+ * @param type type of account
+ * @param amount initial deposit amount
+ */
+static void openAccount(char *id, char *type, char *amount) {
+  printf(":: OPEN ACCOUNT - RUNNING\n");
+
+  acc_id = atoi(id);
+  acc_type = *type;
+  initial_deposit = atoi(amount);
+
+  EXEC SQL INSERT INTO p2.Account(id, balance, type, status) VALUES(
+      :acc_id,
+      :initial_deposit,
+      :acc_type, 'A'
+    );
+  if (sqlca.sqlcode == 0) {
+    EXEC SQL SELECT IDENTITY_VAL_LOCAL() INTO :acc_num
+      FROM SYSIBM.SYSDUMMY1;
+    printf("Account Creation Successful, Your Account Number Is: %d\n", acc_num);
+    printf(":: OPEN ACCOUNT - SUCCESS\n");
+    close_db();
+    open_db();
+  } else {
+    printf("\nOpen Account Failed\n");
+  }
+}
+
+/**
+ * Close an account.
+ * @param accNum account number
+ */
+static void closeAccount(char *accNum) {
+  printf(":: CLOSE ACCOUNT - RUNNING\n");
+
+  acc_num_to_close = atoi(accNum);
+
+  if (batchBypass == 0) {
+    EXEC SQL SELECT number INTO :acc_num_to_close FROM p2.Account WHERE id =
+        :logged_in_cus_id AND number = :acc_num_to_close;
+    if (sqlca.sqlcode == 0) {
+      EXEC SQL UPDATE p2.Account SET status = 'I', balance = 0
+        WHERE ID = :logged_in_cus_id AND number = :acc_num_to_close;
+      if (sqlca.sqlcode == 0) {
+        printf(":: CLOSE ACCOUNT - SUCCESS\n");
+        close_db();
+        open_db();
+      } else {
+        printf("\nClose Account Update To Inactive Failed\n");
+        printf("%d", sqlca.sqlcode);
+      }
+    } else {
+      printf("\nAccount ID To Close Does Not Exist Or Is Not Linked To Your Account\n");
+    }
+  } else {
+    EXEC SQL SELECT number INTO :acc_num_to_close
+      FROM p2.Account
+      WHERE number = :acc_num_to_close;
+    if (sqlca.sqlcode == 0) {
+      EXEC SQL UPDATE p2.Account
+        SET status = 'I', balance = 0 WHERE number = :acc_num_to_close;
+      if (sqlca.sqlcode == 0) {
+        printf(":: CLOSE ACCOUNT - SUCCESS\n");
+        close_db();
+        open_db();
+      } else {
+        printf("\nClose Account Update To Inactive Failed\n");
+      }
+    } else {
+      printf("\nAccount ID To Close Does Not Exist\n");
+    }
+  }
+}
+
+/**
+ * Deposit into an account.
+ * @param accNum account number
+ * @param amount deposit amount
+ */
+static void deposit(char *accNum, char *amount) {
+  printf(":: DEPOSIT - RUNNING\n");
+
+  acc_num = atoi(accNum);
+  deposit_amount = atoi(amount);
+
+  EXEC SQL UPDATE p2.Account
+  SET balance = balance + :deposit_amount
+  WHERE number = :acc_num;
+
+  if (sqlca.sqlcode == 0) {
+    printf(":: DEPOSIT - SUCCESS\n");
+    close_db();
+    open_db();
+  } else {
+    printf(":: DEPOSIT - FAILED\n");
+  }
+}
+
+/**
+ * Withdraw from an account.
+ * @param accNum account number
+ * @param amount withdraw amount
+ */
+static void withdraw(char *accNum, char *amount) {
+  printf(":: WITHDRAW - RUNNING\n");
+
+  acc_num = atoi(accNum);
+  withdraw_amount = atoi(amount);
+
+  if (batchBypass == 0) {
+    EXEC SQL SELECT number INTO :acc_num
+      FROM p2.Account
+      WHERE id = :logged_in_cus_id AND number = :acc_num;
+    if (sqlca.sqlcode == 0) {
+      EXEC SQL UPDATE p2.Account
+      SET balance = balance - :withdraw_amount WHERE number = :acc_num;
+      if (sqlca.sqlcode == 0) {
+        printf(":: WITHDRAW - SUCCESS\n");
+        close_db();
+        open_db();
+      } else {
+        printf(":: WITHDRAW - FAILED, Not Enough Balance\n");
+      }
+    } else {
+      printf("\nAccount ID To Withdraw From Does Not Exist Or Is Not Linked To "
+             "Your Account\n");
+    }
+  } else {
+    EXEC SQL SELECT number INTO :acc_num
+      FROM p2.Account
+      WHERE number = :acc_num;
+    if (sqlca.sqlcode == 0) {
+      EXEC SQL UPDATE p2.Account
+        SET balance = balance - :withdraw_amount
+        WHERE number = :acc_num;
+      if (sqlca.sqlcode == 0) {
+        printf(":: WITHDRAW - SUCCESS\n");
+        close_db();
+        open_db();
+      } else {
+        printf(":: WITHDRAW - FAILED, Not Enough Balance\n");
+      }
+    } else {
+      printf("\nAccount ID To Withdraw From Does Not Exist\n");
+    }
+  }
+}
+
+/**
+ * Transfer amount from source account to destination account.
+ * @param srcAccNum source account number
+ * @param destAccNum destination account number
+ * @param amount transfer amount
+ */
+static void transfer(char *srcAccNum, char *destAccNum, char *amount) {
+  printf(":: TRANSFER - RUNNING\n");
+  transfer_src = atoi(srcAccNum);
+  transfer_destination = atoi(destAccNum);
+  trans_amt = atoi(amount);
+
+  if (batchBypass == 0) {
+    EXEC SQL SELECT number INTO :transfer_src
+      FROM p2.Account
+      WHERE id = :logged_in_cus_id AND number = :transfer_src;
+    if (sqlca.sqlcode == 0) {
+      EXEC SQL UPDATE p2.Account
+        SET balance = balance - :trans_amt
+        WHERE number = :transfer_src;
+      if (sqlca.sqlcode == 0) {
+        EXEC SQL UPDATE p2.Account
+          SET balance = balance + :trans_amt
+          WHERE number = :transfer_destination;
+        if (sqlca.sqlcode == 0) {
+          printf(":: TRANSFER - SUCCESS\n");
+          close_db();
+          open_db();
+        } else {
+          printf("\n:: TRANSFER - FAILED, Failed to transfer money into "
+                 "destination account\n");
+        }
+      } else {
+        printf("\n:: TRANSFER - FAILED, Failed to transfer money out of source "
+               "account\n");
+      }
+    } else {
+      printf("\n:: TRANSFER - FAILED, Account ID To Withdraw From Does Not "
+             "Exist Or Is Not Linked To Your Account\n");
+    }
+  } else {
+    EXEC SQL SELECT number INTO :transfer_src
+      FROM p2.Account WHERE number = :transfer_src;
+    if (sqlca.sqlcode == 0) {
+      EXEC SQL UPDATE p2.Account
+        SET balance = balance - :trans_amt
+        WHERE number = :transfer_src;
+      if (sqlca.sqlcode == 0) {
+        EXEC SQL UPDATE p2.Account
+          SET balance = balance + :trans_amt
+          WHERE number = :transfer_destination;
+        if (sqlca.sqlcode == 0) {
+          printf(":: TRANSFER - SUCCESS\n");
+          close_db();
+          open_db();
+        } else {
+          printf("\n:: TRANSFER - FAILED, Failed to transfer money into "
+                 "destination account\n");
+        }
+      } else {
+        printf("\n:: TRANSFER - FAILED, Failed to transfer money out of source "
+               "account\n");
+      }
+    } else {
+      printf("\n:: TRANSFER - FAILED, Account ID To Withdraw From Does Not "
+             "Exist\n");
+    }
+  }
+}
+
+/**
+ * Display account summary.
+ * @param cusID customer ID
+ */
+static void accountSummary(char *cusID) {
+  cus_id = atoi(cusID);
+  // cus_id = 198;
+  printf(":: ACCOUNT SUMMARY - RUNNING\n");
+
+  EXEC SQL DECLARE accountSummaryC CURSOR
+    FOR SELECT number, balance
+    FROM p2.Account
+    WHERE id = :cus_id AND status = 'A';
+
+  printf("number      balance\n");
+  printf("----------- -----------\n");
+
+  if (sqlca.sqlcode == 0) {
+    EXEC SQL OPEN accountSummaryC;
+    while (1) {
+      EXEC SQL FETCH accountSummaryC INTO :acc_num, :acc_bal;
+      if (sqlca.sqlcode != 0)
+        break;
+      printf("%11d %11d\n", acc_num, acc_bal);
+    }
+    EXEC SQL CLOSE accountSummaryC;
+  }
+
+  acc_sum_total = 0;
+  EXEC SQL SELECT sum(balance) INTO :acc_sum_total
+    FROM p2.Account
+    WHERE id = :cus_id AND status = 'A';
+
+  printf("-----------------------\n");
+  printf("total%18d\n", acc_sum_total);
+
+  printf(":: ACCOUNT SUMMARY - SUCCESS\n");
+}
+
+/**
+ * Display Report A - Customer Information with Total Balance in Decreasing
+ * Order.
+ */
+static void reportA() {
+  printf(":: REPORT A - RUNNING\n");
+
+  EXEC SQL DECLARE reportACursor CURSOR
+    FOR SELECT v.id, c.name, c.gender, c.age, v.total
+    FROM p2.total_balance v, p2.Customer c
+    WHERE v.id = c.id
+    ORDER BY TOTAL DESC;
+
+  printf("id          name            gender age         total\n");
+  printf("----------- --------------- ------ ----------- -----------\n");
+
+  if (sqlca.sqlcode == 0) {
+    EXEC SQL OPEN reportACursor;
+    while (1) {
+      EXEC SQL FETCH reportACursor INTO :cus_id, :cus_name, :cus_gender, :cus_age, :a_total;
+      if (sqlca.sqlcode != 0)
+        break;
+      printf("%-11d %-15s %-6c %-11d %-11d\n", cus_id, cus_name, cus_gender, cus_age, a_total);
+    }
+    printf(":: REPORT A - SUCCESS\n");
+    EXEC SQL CLOSE reportACursor;
+  } else {
+    printf(":: REPORT A - FAILED\n");
+  }
+}
+/**
+ * Display Report B - Customer Information with Total Balance in Decreasing
+ * Order.
+ * @param min minimum age
+ * @param max maximum age
+ */
+static void reportB(char *min, char *max) {
+  printf(":: REPORT B - RUNNING\n");
+
+  b_min = atoi(min);
+  b_max = atoi(max);
+
+  EXEC SQL SELECT avg(total) INTO :b_avg
+  FROM p2.total_balance v, p2.Customer c
+  WHERE v.id = c.id
+  AND (c.age >= :b_min AND c.age <= :b_max);
+
+  printf("average\n");
+  printf("-----------\n");
+
+  if (sqlca.sqlcode == 0) {
+    printf("%-11d\n", b_avg);
+    printf(":: REPORT B - SUCCESS\n");
+  } else {
+    printf(":: REPORT B - FAILED\n");
+  }
+}
+
+/**
+ * Retrieve database connection info from properties file.
+ * @param filename name of properties file
+ */
+static void init(char filename[]) {
+  // open file
+  FILE *fp = fopen(filename, "r");
+  // print error if file cannot be opened
+  if (fp == NULL) {
+    printf("Cannot open properties file %s\n", filename);
+  } else {
+    char *cur_line = (char *)malloc(256);
+    // read each line
+    while (fscanf(fp, "%s", cur_line) != EOF) {
+      char *line_copy = (char *)malloc(256);
+      char *token;
+      // copy current line
+      strcpy(line_copy, cur_line);
+      // tokenize line and save connection values
+      while ((token = strsep(&line_copy, "=")) != NULL) {
+        if (strcmp(token, DB_NAME_KEY) == 0) {
+          token = strsep(&line_copy, "=");
+          strcpy(db_name, token);
+        } else if (strcmp(token, DB_USER_KEY) == 0) {
+          token = strsep(&line_copy, "=");
+          strcpy(db_user, token);
+        } else if (strcmp(token, DB_PASS_KEY) == 0) {
+          token = strsep(&line_copy, "=");
+          strcpy(db_pass, token);
+        } else {
+          return;
+        }
+      }
+    }
+  }
+  // close file
+  fclose(fp);
+}
+
+/**
+ * Open database connection.
+ */
+static void open_db() {
+  EXEC SQL CONNECT TO :db_name USER :db_user USING :db_pass;
+}
+
+/**
+ * Close database connection.
+ */
+static void close_db() {
+  EXEC SQL CONNECT RESET;
+}
+
+/**
+ * Test database connection.
+ */
+static void test_connection() {
+  printf(":: TEST - CONNECTING TO DATABASE\n");
+  open_db();
+  // check returned sqlcode
+  if (sqlca.sqlcode == 0) {
+    printf(":: TEST - SUCCESSFULLY CONNECTED TO DATABASE\n");
+    close_db();
+    printf(":: TEST - DISCONNECTED FROM DATABASE\n");
+  } else {
+    printf(":: TEST - FAILED CONNECTED TO DATABASE\n");
+    printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
+  }
+}
+
+/**
+ * Execute function from batch input.
+ * @param arr array of strings
+ * @param size length of p array
+ */
+void batch_execute(char **arr, int size) {
+  if (size < 0) {
+    printf("Invalid parameter count");
+  } else {
+    printf("\n");
+    if (strcmp(arr[0], "#newCustomer") == 0) {
+      newCustomer(arr[1], arr[2], arr[3], arr[4]);
+    } else if (strcmp(arr[0], "#openAccount") == 0) {
+      openAccount(arr[1], arr[2], arr[3]);
+    } else if (strcmp(arr[0], "#closeAccount") == 0) {
+      closeAccount(arr[1]);
+    } else if (strcmp(arr[0], "#deposit") == 0) {
+      deposit(arr[1], arr[2]);
+    } else if (strcmp(arr[0], "#withdraw") == 0) {
+      withdraw(arr[1], arr[2]);
+    } else if (strcmp(arr[0], "#transfer") == 0) {
+      transfer(arr[1], arr[2], arr[3]);
+    } else if (strcmp(arr[0], "#accountSummary") == 0) {
+      accountSummary(arr[1]);
+    } else if (strcmp(arr[0], "#reportA") == 0) {
+      reportA();
+    } else if (strcmp(arr[0], "#reportB") == 0) {
+      reportB(arr[1], arr[2]);
+    } else {
+      printf("Could not find function to batch_execute: %s", arr[0]);
+    }
+    printf("\n");
+  }
+}
+
+/**
+ * Run batch input given filename.
+ * @param filename name of properties file
+ */
+static void batch_run(char filename[]) {
+  // open file
+  FILE *fp = fopen(filename, "r");
+  // print error if file cannot be opened
+  if (fp == NULL) {
+    printf("Cannot open properties file %s\n", filename);
+  } else {
+    int batch_mode = 0;
+    char *cur_line = (char *)malloc(256);
+    // read each line
+    while (fscanf(fp, "%s", cur_line) != EOF) {
+      char *line_copy = (char *)malloc(256);
+      char *token;
+      // copy current line
+      strcpy(line_copy, cur_line);
+      if (batch_mode == 0) {
+        // tokenize line and find batch key
+        while ((token = strsep(&line_copy, "=")) != NULL) {
+          if (strcmp(token, BATCH_KEY) == 0) {
+            batch_mode = 1;
+          } else {
+            break;
+          }
+        }
+      } else if (batch_mode == 1) {
+        char *token;
+        char **token_arr = (char **)malloc(sizeof(char *) * 1);
+        int token_cnt = 0;
+        // get each token and save to array
+        while ((token = strsep(&line_copy, ",")) != NULL) {
+          token_arr =
+              (char **)realloc(token_arr, (token_cnt + 1) * sizeof(char *));
+          token_arr[token_cnt] = (char *)malloc(strlen(token) + 1);
+          strcpy(token_arr[token_cnt], token);
+          token_cnt++;
+        }
+        // run function
+        batch_execute(token_arr, token_cnt);
+      }
+    }
+  }
+  // close file
+  fclose(fp);
+}
+
+int main(int argc, char *argv[]) {
+  if (argc < 2) {
+    printf("Need properties file\n");
+  } else {
+    init(argv[1]);
+    test_connection();
+
+    open_db();
+    batch_run(argv[1]);
+    promptMainMenu();
+    close_db();
+  }
+  return 0;
+}
