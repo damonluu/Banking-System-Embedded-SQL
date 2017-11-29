@@ -36,8 +36,8 @@ create table p2.account
 --
 create view p2.total_balance as
   select a.ID, SUM(a.Balance) Total
-  from p2.account a WHERE a.Status = 'A'
-group by a.ID;
+    from p2.account a WHERE a.Status = 'A'
+  group by a.ID;
 --
 
 commit;

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h> //for toupper function
 
 const char DB_NAME_KEY[16] = "db2.name";
 const char DB_USER_KEY[16] = "db2.username";
@@ -20,7 +21,7 @@ char cus_name[15];
 char cus_gender;
 int cus_age;
 // int cus_pin; // DOESNT WORK FOR PINS WITH LEADING ZEROES
-char cus_pin[10];
+char cus_pin[4];
 int acc_num;
 int acc_id;
 int acc_bal;
@@ -75,26 +76,27 @@ static int checkCustomerExistWithPin();
 static int checkAccountExist();
 static void close_db();
 static void open_db();
+static int digitValidator();
 
 static void promptMainMenu() {
   batchBypass = 0;
-  int menu_input;
+  char menu_input;
   printf("\nWelcome to the Self Banking System!"
          "\n1. New Customer"
          "\n2. Customer Login"
          "\n3. Exit"
          "\nPlease enter your choice: ");
-  fscanf(stdin, "%d", &menu_input);
-  // printf("you entered: %s", menu_input);
+  scanf("%[^\n]c", &menu_input);
+  // printf("you entered: %c", menu_input);
   while (getchar() != '\n');
   printf("\n");
-  if (menu_input == 1) {
+  if (menu_input == '1') {
     printf("\n");
     promptNewCustomer();
-  } else if (menu_input == 2) {
+  } else if (menu_input == '2') {
     printf("\n");
     promptLogin();
-  } else if (menu_input == 3) {
+  } else if (menu_input == '3') {
     printf("Good bye\n\n");
   } else {
     printf("\nInput Not Recognized. Going Back To Main Menu\n\n");
@@ -103,44 +105,45 @@ static void promptMainMenu() {
 }
 
 static void promptNewCustomer() {
-  char userEnteredName[15];
+  char userEnteredName[15] = {};
   char userEnteredGender;
-  char userEnteredAge[3];
-  char userEnteredPin[10];
+  char userEnteredAge[3] = {};
+  char userEnteredPin[4] = {};
 
   printf("\nPlease enter your name: ");
-  fscanf(stdin, "%s", userEnteredName);
+  scanf("%[^\n]s", userEnteredName);
   while (getchar() != '\n');
   if (strcmp(userEnteredName, "") == 0) {
     printf("Name cannot be blank, going back to main menu");
     promptMainMenu();
     return;
   }
+  // printf("hello: %s", userEnteredName);
 
   printf("\nPlease enter your gender ('F' for Female or 'M' for Male): ");
-  fscanf(stdin, "%c", &userEnteredGender);
+  scanf("%[^\n]c", &userEnteredGender);
+  userEnteredGender = toupper(userEnteredGender);
   while (getchar() != '\n');
   if ((userEnteredGender != 'M') && (userEnteredGender != 'F')) {
-    printf("Gender can only be 'F' for female or 'M' for male, going back to "
-           "main menu");
+    printf("Gender can only be 'F' for female or 'M' for male, going back to main menu");
     promptMainMenu();
     return;
   }
 
   printf("\nPlease enter your age: ");
-  fscanf(stdin, "%s", userEnteredAge);
+  scanf("%[^\n]s", userEnteredAge);
   while (getchar() != '\n');
-  if (atoi(userEnteredAge) < 0) {
-    printf("Age can only be a positive integer, going back to main menu");
+  if ((digitValidator(userEnteredAge) == 0) || atoi(userEnteredAge) <= 0) {
+    printf("Age can only be a positive integer > 0, going back to main menu");
     promptMainMenu();
     return;
   }
 
-  printf("\nPlease enter your pin (numbers only): ");
-  fscanf(stdin, "%s", userEnteredPin);
+  printf("\nPlease enter your pin (4 digit and numbers only): ");
+  scanf("%[^\n]s", userEnteredPin);
   while (getchar() != '\n');
-  if (atoi(userEnteredPin) < 0) {
-    printf("Pin can only be a positive integer, going back to main menu");
+  if ((digitValidator(userEnteredPin) == 0) || (strlen(userEnteredPin) != 4) || (atoi(userEnteredPin) <= 0)) {
+    printf("Pin can only be a 4 digits and positive integer > 0, going back to main menu");
     promptMainMenu();
     return;
   }
@@ -148,23 +151,33 @@ static void promptNewCustomer() {
   // printf("userEnteredName: %s, userEnteredGender: %c, userEnteredAge: %s, "
   //        "userEnteredPin: %s\n",
   //        userEnteredName, userEnteredGender, userEnteredAge, userEnteredPin);
-  newCustomer(&userEnteredName, &userEnteredGender, &userEnteredAge,
-              &userEnteredPin);
+  newCustomer(&userEnteredName, &userEnteredGender, &userEnteredAge, &userEnteredPin);
   promptMainMenu();
 }
 
 static void promptLogin() {
-  char userEnteredId[15];
-  char userEnteredPin[15];
-  // int userEnteredId = -1;
-  // int userEnteredPin = -1;
+  char userEnteredId[15] = {};
+  char userEnteredPin[4] = {};
 
   printf("Please enter your Customer ID: ");
-  fscanf(stdin, "%s", userEnteredId);
+  scanf("%[^\n]s", userEnteredId);
   while (getchar() != '\n');
+
+  if ((digitValidator(userEnteredId) == 0) || atoi(userEnteredId) < 0 || strlen(userEnteredId) == 0) {
+    printf("Customer ID can only be a positive integer, going back to main menu\n\n");
+    promptMainMenu();
+    return;
+  }
+
   printf("Please enter your Pin number: ");
-  fscanf(stdin, "%s", userEnteredPin);
+  scanf("%[^\n]s", userEnteredPin);
   while (getchar() != '\n');
+
+  if ((digitValidator(userEnteredPin) == 0) || atoi(userEnteredPin) < 0 || strlen(userEnteredPin) == 0) {
+    printf("Customer Pin can only be a positive integer, going back to main menu\n\n");
+    promptMainMenu();
+    return;
+  }
 
   if ((atoi(userEnteredId) == 0) && (atoi(userEnteredPin) == 0)) {
     // admin login
@@ -173,24 +186,23 @@ static void promptLogin() {
     // regular customer login
     if (checkCustomerExistWithPin(&userEnteredId, &userEnteredPin) == 1) {
       logged_in_cus_id = atoi(userEnteredId);
-      printf("\naccount exist!! logging in\n");
+      // printf("\naccount exist!! logging in\n");
       customerMainMenu();
     } else {
       printf("\nCustomer ID or Pin Is Incorrect!!, going back to Main Menu\n");
-      printf("\nuserEnteredId%s\n", userEnteredId);
+      // printf("\nuserEnteredId%s\n", userEnteredId);
       promptMainMenu();
       return;
     }
   } else {
-    printf("\n\nUser ID and Pin can only be positive integers, Going back to "
-           "main menu");
+    printf("\n\nUser ID and Pin can only be positive integers > 0, Going back to main menu");
     promptMainMenu();
     return;
   }
 }
 
 static void customerMainMenu() {
-  int customer_menu_input;
+  char customer_menu_input;
   printf("\nCustomer Main Menu"
          "\n1. Open Account"
          "\n2. Close Account"
@@ -201,41 +213,38 @@ static void customerMainMenu() {
          "\n7. Exit"
          "\nPlease enter your choice: "
        );
-  fscanf(stdin, "%d", &customer_menu_input);
+  scanf("%[^\n]c", &customer_menu_input);
   while (getchar() != '\n');
   printf("\n");
-  if (customer_menu_input == 1) {
-    char customerEnteredId[10];
+  if (customer_menu_input == '1') {
+    char customerEnteredId[10] = {};
     char customerEnteredAccountType;
-    char customerInitialDeposit[20];
+    char customerInitialDeposit[20] = {};
 
     printf("Please enter a Customer ID: ");
-    fscanf(stdin, "%s", customerEnteredId);
+    scanf("%[^\n]s", customerEnteredId);
     while (getchar() != '\n');
-    if (atoi(customerEnteredId) < 0) {
-      printf("Customer ID can only be a positive integer, going back to " "Customer Main Menu");
+    if (atoi(customerEnteredId) <= 0) {
+      printf("Customer ID can only be a positive integer > 0, going back to " "Customer Main Menu");
       customerMainMenu();
       return;
     }
 
     printf("Please enter a account type ('C' for Checking or 'S' for Savings): ");
-    fscanf(stdin, "%c", &customerEnteredAccountType);
+    scanf("%[^\n]c", &customerEnteredAccountType);
     while (getchar() != '\n');
-    const char *matches = "CS";
-    if (strchr(matches, customerEnteredAccountType) != NULL) {
-      printf("valid account type");
-    } else {
-      printf("Account type can only be capital 'C' for checkings or 'S' for "
-             "savings, going back to Customer Main Menu");
+    customerEnteredAccountType = toupper(customerEnteredAccountType);
+    if ((customerEnteredAccountType!= 'C') && (customerEnteredAccountType != 'S')) {
+      printf("Account Type can only be 'C' for Checking or 'S' for Savings, going back to Customer main menu");
       customerMainMenu();
       return;
     }
 
     printf("Please enter a balance (Initial Deposit): ");
-    fscanf(stdin, "%s", customerInitialDeposit);
+    scanf("%[^\n]s", customerInitialDeposit);
     while (getchar() != '\n');
-    if (atoi(customerInitialDeposit) < 0) {
-      printf("Initial Balance can only be a positive integer, Going back to "
+    if (atoi(customerInitialDeposit) <= 0) {
+      printf("Initial Balance can only be a positive integer > 0, Going back to "
              "Customer Main Menu");
       customerMainMenu();
       return;
@@ -247,15 +256,15 @@ static void customerMainMenu() {
       printf("\nCustomer ID Does doesn't exist!!, going back to Customer Main Menu\n");
     }
 
-  } else if (customer_menu_input == 2) {
+  } else if (customer_menu_input == '2') {
 
-    char customerEnteredAccountNumberToClose[10];
+    char customerEnteredAccountNumberToClose[10] = {};
 
     printf("Please enter a Customer ID: ");
-    fscanf(stdin, "%s", customerEnteredAccountNumberToClose);
+    scanf("%[^\n]s", customerEnteredAccountNumberToClose);
     while (getchar() != '\n');
-    if (atoi(customerEnteredAccountNumberToClose) < 0) {
-      printf("Account Number to close can only be a positive integer, going "
+    if (atoi(customerEnteredAccountNumberToClose) <= 0) {
+      printf("Account Number to close can only be a positive integer > 0, going "
              "back to Customer Main Menu");
       customerMainMenu();
       return;
@@ -268,58 +277,57 @@ static void customerMainMenu() {
       printf("\nAccount Number doesn't exist!!, going back to Customer Main Menu\n");
     }
 
-  } else if (customer_menu_input == 3) {
+  } else if (customer_menu_input == '3') {
 
-    char customerEnteredAccountNumberToDeposit[10];
-    char customerEnteredAmountToDeposit[15];
+    char customerEnteredAccountNumberToDeposit[10] = {};
+    char customerEnteredAmountToDeposit[15] = {};
 
     printf("Please Enter The Account Number To Deposit To: ");
-    fscanf(stdin, "%s", customerEnteredAccountNumberToDeposit);
+    scanf("%[^\n]s", customerEnteredAccountNumberToDeposit);
     while (getchar() != '\n');
-    if (atoi(customerEnteredAccountNumberToDeposit) < 0) {
-      printf("Account Number to deposit to can only be a positive integer, "
+    if (atoi(customerEnteredAccountNumberToDeposit) <= 0) {
+      printf("Account Number to deposit to can only be a positive integer > 0, "
              "going back to Customer Main Menu");
       customerMainMenu();
       return;
     }
 
     printf("Please enter a amount to deposit: ");
-    fscanf(stdin, "%s", customerEnteredAmountToDeposit);
+    scanf("%[^\n]s", customerEnteredAmountToDeposit);
     while (getchar() != '\n');
-    if (atoi(customerEnteredAmountToDeposit) < 0) {
-      printf("Deposit amount can only be a positive integer, Going back to "
+    if (atoi(customerEnteredAmountToDeposit) <= 0) {
+      printf("Deposit amount can only be a positive integer > 0, Going back to "
              "Customer Main Menu");
       customerMainMenu();
       return;
     }
 
     if (checkAccountExist(&customerEnteredAccountNumberToDeposit) == 1) {
-      deposit(&customerEnteredAccountNumberToDeposit,
-              &customerEnteredAmountToDeposit);
+      deposit(&customerEnteredAccountNumberToDeposit, &customerEnteredAmountToDeposit);
     } else {
       printf("\nAccount Number doesn't exist!!, going back to Customer Main Menu\n");
     }
 
-  } else if (customer_menu_input == 4) {
+  } else if (customer_menu_input == '4') {
 
-    char customerEnteredAccountNumberToWithdraw[10];
-    char customerEnteredAmountToWithdraw[15];
+    char customerEnteredAccountNumberToWithdraw[10] = {};
+    char customerEnteredAmountToWithdraw[15] = {};
 
     printf("Please enter a Customer ID: ");
-    fscanf(stdin, "%s", customerEnteredAccountNumberToWithdraw);
+    scanf("%[^\n]s", customerEnteredAccountNumberToWithdraw);
     while (getchar() != '\n');
-    if (atoi(customerEnteredAccountNumberToWithdraw) < 0) {
-      printf("Account Number to deposit to can only be a positive integer, "
+    if (atoi(customerEnteredAccountNumberToWithdraw) <= 0) {
+      printf("Account Number to deposit to can only be a positive integer > 0, "
              "going back to Customer Main Menu");
       customerMainMenu();
       return;
     }
 
     printf("Please enter an amount to Withdraw: ");
-    fscanf(stdin, "%s", customerEnteredAmountToWithdraw);
+    scanf("%[^\n]s", customerEnteredAmountToWithdraw);
     while (getchar() != '\n');
-    if (atoi(customerEnteredAmountToWithdraw) < 0) {
-      printf("Withdraw amount can only be a positive integer, Going back to Customer Main Menu");
+    if (atoi(customerEnteredAmountToWithdraw) <= 0) {
+      printf("Withdraw amount can only be a positive integer > 0, Going back to Customer Main Menu");
       customerMainMenu();
       return;
     }
@@ -332,37 +340,37 @@ static void customerMainMenu() {
              "Menu\n");
     }
 
-  } else if (customer_menu_input == 5) {
+  } else if (customer_menu_input == '5') {
 
-    char transferSourceAccountNumber[10];
-    char transferDestinationAccountNumber[10];
-    char transferBalanceAmount[15];
+    char transferSourceAccountNumber[10] = {};
+    char transferDestinationAccountNumber[10] = {};
+    char transferBalanceAmount[15] = {};
 
     printf("Please enter a your Source's Account Number: ");
-    fscanf(stdin, "%s", transferSourceAccountNumber);
+    scanf("%[^\n]s", transferSourceAccountNumber);
     while (getchar() != '\n');
-    if (atoi(transferSourceAccountNumber) < 0) {
-      printf("Source Account Number can only be a positive integer, going back "
+    if (atoi(transferSourceAccountNumber) <= 0) {
+      printf("Source Account Number can only be a positive integer > 0, going back "
              "to Customer Main Menu");
       customerMainMenu();
       return;
     }
 
     printf("Please enter a your Destination's Account Number: ");
-    fscanf(stdin, "%s", transferDestinationAccountNumber);
+    scanf("%[^\n]s", transferDestinationAccountNumber);
     while (getchar() != '\n');
-    if (atoi(transferDestinationAccountNumber) < 0) {
-      printf("Destination Account Number can only be a positive integer, going "
+    if (atoi(transferDestinationAccountNumber) <= 0) {
+      printf("Destination Account Number can only be a positive integer > 0, going "
              "back to Customer Main Menu");
       customerMainMenu();
       return;
     }
 
     printf("Please enter the amount to transfer: ");
-    fscanf(stdin, "%s", transferBalanceAmount);
+    scanf("%[^\n]s", transferBalanceAmount);
     while (getchar() != '\n');
-    if (atoi(transferBalanceAmount) < 0) {
-      printf("Transfer Amount can only be a positive integer, going back to "
+    if (atoi(transferBalanceAmount) <= 0) {
+      printf("Transfer Amount can only be a positive integer > 0, going back to "
              "Customer Main Menu");
       customerMainMenu();
       return;
@@ -376,11 +384,11 @@ static void customerMainMenu() {
              "Customer Main Menu\n");
     }
 
-  } else if (customer_menu_input == 6) {
-    char acc_sum_cus_id[10];
+  } else if (customer_menu_input == '6') {
+    char acc_sum_cus_id[10] = {};
     sprintf(acc_sum_cus_id, "%d", logged_in_cus_id);
     accountSummary(&acc_sum_cus_id);
-  } else if (customer_menu_input == 7) {
+  } else if (customer_menu_input == '7') {
     promptMainMenu();
     return;
 
@@ -429,7 +437,7 @@ static int checkAccountExist(char *accountNum) {
 }
 
 static void administratorMainMenu() {
-  int admin_menu_input;
+  char admin_menu_input;
   printf("\nAdministrator Main Menu!"
          "\n1. Account Summary for a Customer"
          "\n2. Report A :: Customer Information with Total Balance in Decreasing Order"
@@ -438,47 +446,52 @@ static void administratorMainMenu() {
          "\nPlease Enter Your Choice: "
        );
 
-  fscanf(stdin, "%d", &admin_menu_input);
+  scanf("%[^\n]c", &admin_menu_input);
   while (getchar() != '\n');
   printf("\n");
 
-  if (admin_menu_input == 1) {
-    printf("\n");
-    char admin_summary_cus_id[10];
-    printf("\nPlease enter your the Customer ID to get the account summary for: ");
-    fscanf(stdin, "%s", admin_summary_cus_id);
+  if (admin_menu_input == '1') {
+    char admin_summary_cus_id[10] = {};
+    printf("\nPlease enter the Customer ID to get the account summary for: ");
+    scanf("%[^\n]s", admin_summary_cus_id);
     while (getchar() != '\n');
+
+    if (atoi(admin_summary_cus_id) <= 0) {
+      printf("Customer ID can only be a positive integer > 0, going back to Administrator main menu\n\n");
+      administratorMainMenu();
+      return;
+    }
+
     accountSummary(&admin_summary_cus_id);
 
-  } else if (admin_menu_input == 2) {
+  } else if (admin_menu_input == '2') {
     printf("\n");
     reportA();
-  } else if (admin_menu_input == 3) {
-    printf("\n");
-    char admin_cus_min_age[10];
-    char admin_cus_max_age[10];
+  } else if (admin_menu_input == '3') {
+    char admin_cus_min_age[10] = {};
+    char admin_cus_max_age[10] = {};
 
     printf("\nPlease enter the minimum age: ");
-    fscanf(stdin, "%s", admin_cus_min_age);
+    scanf("%[^\n]s", admin_cus_min_age);
     while (getchar() != '\n');
-    if(atoi(admin_cus_min_age) < 0) {
-      printf("\nMinimum Age Can Only Be a Positive Integer, Going back to Customer Main Menu\n");
-      customerMainMenu();
+    if(atoi(admin_cus_min_age) <= 0) {
+      printf("\nMinimum Age Can Only Be a Positive Integer > 0, Going back to Administrator Main Menu\n");
+      administratorMainMenu();
       return;
     }
 
     printf("\nPlease enter the maximum age: ");
-    fscanf(stdin, "%s", admin_cus_max_age);
+    scanf("%[^\n]s", admin_cus_max_age);
     while (getchar() != '\n');
-    if(atoi(admin_cus_max_age) < 0) {
-      printf("\nMaximum Age Can Only Be a Positive Integer, Going back to Customer Main Menu\n");
-      customerMainMenu();
+    if(atoi(admin_cus_max_age) <= 0) {
+      printf("\nMaximum Age Can Only Be a Positive Integer > 0, Going back to Administrator Main Menu\n");
+      administratorMainMenu();
       return;
     }
     printf("\n");
     reportB(&admin_cus_min_age, &admin_cus_max_age);
 
-  } else if (admin_menu_input == 4) {
+  } else if (admin_menu_input == '4') {
     promptMainMenu();
     return;
   } else {
@@ -513,11 +526,18 @@ static void newCustomer(char *name, char *gender, char *age, char *pin) {
   if (sqlca.sqlcode == 0) {
     EXEC SQL SELECT IDENTITY_VAL_LOCAL() INTO :cus_id
       FROM SYSIBM.SYSDUMMY1;
-    printf("New Customer Creation Successful, Your Customer ID Is: %d\n",
-           cus_id);
+    printf("New Customer Creation Successful, Your Customer ID Is: %d\n", cus_id);
     printf(":: CREATE NEW CUSTOMER - SUCCESS\n");
     close_db();
     open_db();
+  } else {
+    printf(":: CREATE NEW CUSTOMER - FAILED\n"
+           "Name must not be empty\n"
+           "Gender must be 'F' or 'M'\n"
+           "Age must be a positive Integer > 0\n"
+           "Pin must be a positive integer > 0\n"
+         );
+    printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
   }
 }
 
@@ -547,7 +567,12 @@ static void openAccount(char *id, char *type, char *amount) {
     close_db();
     open_db();
   } else {
-    printf("\nOpen Account Failed\n");
+    printf(":: OPEN ACCOUNT - FAILED\n"
+           "ID must be a positive integer > 0\n"
+           "Account Type must be 'C' for checking or 'S' for savings\n"
+           "Status Must be 'A' for active or 'I' or inactive\n"
+          );
+    printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
   }
 }
 
@@ -572,7 +597,7 @@ static void closeAccount(char *accNum) {
         open_db();
       } else {
         printf("\nClose Account Update To Inactive Failed\n");
-        printf("%d", sqlca.sqlcode);
+        printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
       }
     } else {
       printf("\nAccount ID To Close Does Not Exist Or Is Not Linked To Your Account\n");
@@ -592,7 +617,10 @@ static void closeAccount(char *accNum) {
         printf("\nClose Account Update To Inactive Failed\n");
       }
     } else {
-      printf("\nAccount ID To Close Does Not Exist\n");
+      printf("\n:: CLOSE ACCOUNT - Failed"
+             "\nAccount Number To Close Must be a positive integer > 0\n"
+           );
+      printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
     }
   }
 }
@@ -618,6 +646,7 @@ static void deposit(char *accNum, char *amount) {
     open_db();
   } else {
     printf(":: DEPOSIT - FAILED\n");
+    printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
   }
 }
 
@@ -645,10 +674,11 @@ static void withdraw(char *accNum, char *amount) {
         open_db();
       } else {
         printf(":: WITHDRAW - FAILED, Not Enough Balance\n");
+        printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
       }
     } else {
-      printf("\nAccount ID To Withdraw From Does Not Exist Or Is Not Linked To "
-             "Your Account\n");
+      printf("\nAccount ID To Withdraw From Does Not Exist Or Is Not Linked To Your Account\n");
+      printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
     }
   } else {
     EXEC SQL SELECT number INTO :acc_num
@@ -664,9 +694,11 @@ static void withdraw(char *accNum, char *amount) {
         open_db();
       } else {
         printf(":: WITHDRAW - FAILED, Not Enough Balance\n");
+        printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
       }
     } else {
       printf("\nAccount ID To Withdraw From Does Not Exist\n");
+      printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
     }
   }
 }
@@ -700,16 +732,16 @@ static void transfer(char *srcAccNum, char *destAccNum, char *amount) {
           close_db();
           open_db();
         } else {
-          printf("\n:: TRANSFER - FAILED, Failed to transfer money into "
-                 "destination account\n");
+          printf("\n:: TRANSFER - FAILED, Failed to transfer money into destination account\n");
+          printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
         }
       } else {
-        printf("\n:: TRANSFER - FAILED, Failed to transfer money out of source "
-               "account\n");
+        printf("\n:: TRANSFER - FAILED, Failed to transfer money out of source account\n");
+        printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
       }
     } else {
-      printf("\n:: TRANSFER - FAILED, Account ID To Withdraw From Does Not "
-             "Exist Or Is Not Linked To Your Account\n");
+      printf("\n:: TRANSFER - FAILED, Account ID To Withdraw From Does Not Exist Or Is Not Linked To Your Account\n");
+      printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
     }
   } else {
     EXEC SQL SELECT number INTO :transfer_src
@@ -727,16 +759,16 @@ static void transfer(char *srcAccNum, char *destAccNum, char *amount) {
           close_db();
           open_db();
         } else {
-          printf("\n:: TRANSFER - FAILED, Failed to transfer money into "
-                 "destination account\n");
+          printf("\n:: TRANSFER - FAILED, Failed to transfer money into destination account\n");
+          printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
         }
       } else {
-        printf("\n:: TRANSFER - FAILED, Failed to transfer money out of source "
-               "account\n");
+        printf("\n:: TRANSFER - FAILED, Failed to transfer money out of source account\n");
+        printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
       }
     } else {
-      printf("\n:: TRANSFER - FAILED, Account ID To Withdraw From Does Not "
-             "Exist\n");
+      printf("\n:: TRANSFER - FAILED, Account ID To Withdraw From Does Not Exist\n");
+      printf(":::: ERROR SQLCODE %i\n", sqlca.sqlcode);
     }
   }
 }
@@ -747,35 +779,39 @@ static void transfer(char *srcAccNum, char *destAccNum, char *amount) {
  */
 static void accountSummary(char *cusID) {
   cus_id = atoi(cusID);
-  // cus_id = 198;
   printf(":: ACCOUNT SUMMARY - RUNNING\n");
+  // printf("\ncus id: %d\n", cus_id);
 
   EXEC SQL DECLARE accountSummaryC CURSOR
     FOR SELECT number, balance
     FROM p2.Account
     WHERE id = :cus_id AND status = 'A';
 
-  printf("number      balance\n");
-  printf("----------- -----------\n");
+  EXEC SQL OPEN accountSummaryC;
+  EXEC SQL FETCH accountSummaryC INTO :acc_num, :acc_bal;
 
-  if (sqlca.sqlcode == 0) {
-    EXEC SQL OPEN accountSummaryC;
-    while (1) {
-      EXEC SQL FETCH accountSummaryC INTO :acc_num, :acc_bal;
-      if (sqlca.sqlcode != 0)
-        break;
+  if(sqlca.sqlcode == 100) {
+    printf("No Accounts To Get Summary For\n");
+  } else {
+    printf("number      balance\n");
+    printf("----------- -----------\n");
+
+    while(sqlca.sqlcode != 100) {
       printf("%11d %11d\n", acc_num, acc_bal);
+      EXEC SQL FETCH accountSummaryC INTO :acc_num, :acc_bal;
     }
+
     EXEC SQL CLOSE accountSummaryC;
+
+    acc_sum_total = 0;
+    EXEC SQL SELECT sum(balance) INTO :acc_sum_total
+      FROM p2.Account
+      WHERE id = :cus_id AND status = 'A';
+
+    printf("-----------------------\n");
+    printf("total%18d\n", acc_sum_total);
+
   }
-
-  acc_sum_total = 0;
-  EXEC SQL SELECT sum(balance) INTO :acc_sum_total
-    FROM p2.Account
-    WHERE id = :cus_id AND status = 'A';
-
-  printf("-----------------------\n");
-  printf("total%18d\n", acc_sum_total);
 
   printf(":: ACCOUNT SUMMARY - SUCCESS\n");
 }
@@ -793,22 +829,22 @@ static void reportA() {
     WHERE v.id = c.id
     ORDER BY TOTAL DESC;
 
-  printf("id          name            gender age         total\n");
-  printf("----------- --------------- ------ ----------- -----------\n");
+  EXEC SQL OPEN reportACursor;
+  EXEC SQL FETCH reportACursor INTO :cus_id, :cus_name, :cus_gender, :cus_age, :a_total;
 
-  if (sqlca.sqlcode == 0) {
-    EXEC SQL OPEN reportACursor;
-    while (1) {
-      EXEC SQL FETCH reportACursor INTO :cus_id, :cus_name, :cus_gender, :cus_age, :a_total;
-      if (sqlca.sqlcode != 0)
-        break;
-      printf("%-11d %-15s %-6c %-11d %-11d\n", cus_id, cus_name, cus_gender, cus_age, a_total);
-    }
-    printf(":: REPORT A - SUCCESS\n");
-    EXEC SQL CLOSE reportACursor;
+  if(sqlca.sqlcode == 100) {
+    printf("No Customers To Get Report A For\n");
   } else {
-    printf(":: REPORT A - FAILED\n");
+    printf("id          name            gender age         total\n");
+    printf("----------- --------------- ------ ----------- -----------\n");
+    while (sqlca.sqlcode != 100) {
+      printf("%-11d %-15s %-6c %-11d %-11d\n", cus_id, cus_name, cus_gender, cus_age, a_total);
+      EXEC SQL FETCH reportACursor INTO :cus_id, :cus_name, :cus_gender, :cus_age, :a_total;
+    }
+
   }
+  EXEC SQL CLOSE reportACursor;
+  printf(":: REPORT A - SUCCESS\n");
 }
 /**
  * Display Report B - Customer Information with Total Balance in Decreasing
@@ -827,15 +863,22 @@ static void reportB(char *min, char *max) {
   WHERE v.id = c.id
   AND (c.age >= :b_min AND c.age <= :b_max);
 
-  printf("average\n");
-  printf("-----------\n");
-
   if (sqlca.sqlcode == 0) {
+    printf("average\n");
+    printf("-----------\n");
     printf("%-11d\n", b_avg);
-    printf(":: REPORT B - SUCCESS\n");
   } else {
-    printf(":: REPORT B - FAILED\n");
+    printf("There are no customers to get report B for\n");
   }
+  printf(":: REPORT B - SUCCESS\n");
+}
+
+// check if a string is all digits
+int digitValidator(char *s){
+  while (*s) {
+    if (isdigit(*s++) == 0) return 0;
+  }
+  return 1;
 }
 
 /**
