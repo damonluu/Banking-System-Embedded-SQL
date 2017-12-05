@@ -1,4 +1,4 @@
-# Banking-System-Using-C-and-Embedded-SQL
+# Banking-System-Embedded-SQL
 
 INSTRUCTIONS TO RUN
 
@@ -18,13 +18,13 @@ then on the db2 terminal, type in vi db.properties and paste in the contents of 
 
 type in vi p2.sqc in the db2 terminal and paste in the contents of my p2.sql
 
-to run my program paste in the following commands:
+to run the program paste in the following commands:
 
-db2 -tvf create.clp;
-db2 connect to cs157a
-db2 prep p2.sqc
-cc -I./sqllib/include -c p2.c
-cc -o p2 p2.o -L./sqllib/lib -ldb2
-./p2 db.properties
+db2 -tvf create.clp;  
+db2 connect to cs157a  
+db2 prep p2.sqc  
+cc -I./sqllib/include -c p2.c  
+cc -o p2 p2.o -L./sqllib/lib -ldb2  
+./p2 db.properties  
 
 It will run the batch stuff and them run the user prompt stuff for you to test
